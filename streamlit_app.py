@@ -4,7 +4,7 @@ import json
 import pandas as pd
 
 
-st.title("🌀 FEEDBACK108")
+st.title("🌀 FEEDBACK180")
 
 
 # ใส่ API Key สำหรับ Typhoon API
