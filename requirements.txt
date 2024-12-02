@@ -2,3 +2,4 @@ streamlit
 requests
 json
 pandas
+git+https://github.com/username/typhoon-library.git
