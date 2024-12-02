@@ -1,56 +1,105 @@
 import streamlit as st
-from openai import OpenAI
+import requests
+import json
+import pandas as pd
 
-# Show title and description.
-st.title("💬 Chatbot")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
-)
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+st.title("🌀 FEEDBACK108")
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+# ใส่ API Key สำหรับ Typhoon API
+api_key = "sk-6EGVjVrPBYHxOS5xbEGTS4oALtLeev8rE0cTFQuo5qLPKuCL"
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
+# ตรวจสอบว่ามีการสร้าง session_state สำหรับเก็บประวัติหรือไม่
+if "messages" not in st.session_state:
+    st.session_state.messages = []  # เก็บข้อความสนทนาในรูปแบบ [{"role": "user/assistant", "content": "ข้อความ"}]
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
 
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
+# ฟังก์ชันสำหรับส่งคำขอไปยัง Typhoon API
+def generate_response(input_text):
+    if not api_key.startswith("sk-"):
+        st.warning("Please enter a valid Typhoon API key!", icon="⚠")
+        return "Invalid API Key"
+
+
+    payload = {
+        "model": "typhoon-instruct",
+        "temperature": 0.7,
+        "messages": st.session_state.messages,  # ส่งประวัติการสนทนาไปยัง API
+    }
+
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+
+    try:
+        response = requests.post(
+            'https://api.opentyphoon.ai/v1/chat/completions',
+            headers=headers,
+            data=json.dumps(payload)
         )
+        response.raise_for_status()
+        data = response.json()
 
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+
+        if 'choices' in data and len(data['choices']) > 0:
+            content = data['choices'][0]['message']['content']
+            return content
+        else:
+            return "No response content found from the API."
+    except requests.exceptions.RequestException as e:
+        return f"Error occurred: {e}"
+
+
+
+
+# UI สำหรับแสดงประวัติการสนทนา
+for message in st.session_state.messages:
+    if message["role"] == "user":
+        st.chat_message("user").markdown(message["content"])
+    elif message["role"] == "assistant":
+        # ตรวจสอบว่าข้อความเป็น JSON หรือข้อความทั่วไป
+        try:
+            # ลองโหลดข้อความเป็น JSON ถ้าสำเร็จแสดงเป็น Visualization
+            data = json.loads(message["content"])
+            df = pd.DataFrame(data)
+            st.bar_chart(df)
+        except (json.JSONDecodeError, ValueError):
+            # ถ้าไม่ใช่ JSON ให้แสดงข้อความปกติ
+            st.chat_message("assistant").markdown(message["content"])
+
+
+
+
+# ฟังก์ชันสำหรับรับข้อความจากผู้ใช้
+user_input = st.chat_input("Type your message here...")  # รับข้อความที่ผู้ใช้ป้อน
+
+
+if user_input:
+    # บันทึกข้อความผู้ใช้ใน session_state
+    st.session_state.messages.append({"role": "user", "content": user_input})
+   
+    # แสดงข้อความผู้ใช้ทันที
+    st.chat_message("user").markdown(user_input)
+
+
+    # ส่งข้อความไปยัง Typhoon API และรับคำตอบ
+    with st.spinner("Generating response..."):
+        assistant_response = generate_response(user_input)
+
+
+    # บันทึกข้อความตอบกลับใน session_state
+    st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+
+
+    # แสดงข้อความตอบกลับหรือ Visualization
+    try:
+        data = json.loads(assistant_response)
+        df = pd.DataFrame(data)
+        st.bar_chart(df)
+    except (json.JSONDecodeError, ValueError):
+        st.chat_message("assistant").markdown(assistant_response)
