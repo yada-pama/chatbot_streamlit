@@ -42,6 +42,22 @@ if st.session_state.chat_sessions:
 # ส่วนหลักของแอปพลิเคชัน
 st.title("Chat Application")
 
+model_options = {
+    "gpt-4o-mini": "GPT-4o Mini",
+    "llama-3.1-405b": "Llama 3.1 405B",
+    "llama-3.2-3b": "Llama 3.2 3B",
+    "Gemini Pro 1.5": "Gemini Pro 1.5",
+}
+
+model = st.radio(
+    "Choose your AI Model:",
+    options=list(model_options.keys()),
+    format_func=lambda x: model_options[x],
+    index=0,
+    horizontal=True,
+)
+st.session_state["model"] = model
+
 # รับข้อความจากผู้ใช้
 user_input = st.chat_input("Type your message here...")  # กล่องข้อความสำหรับผู้ใช้
 
