@@ -20,7 +20,28 @@ def add_to_current_session(role, content):
             {"role": role, "content": content, "timestamp": timestamp}
         )
 
-# Sidebar สำหรับจัดการเซสชัน
+# ส่วนบนซ้ายสำหรับจัดการเซสชัน
+with st.sidebar.expander("⚙️ Settings", expanded=True):
+    # Dropdown สำหรับเลือก AI Model
+    model_options = {
+        "gpt-4o-mini": "GPT-4o Mini",
+        "llama-3.1-405b": "Llama 3.1 405B",
+        "llama-3.2-3b": "Llama 3.2 3B",
+        "Gemini Pro 1.5": "Gemini Pro 1.5",
+    }
+
+    model = st.selectbox(
+        "Choose your AI Model:",
+        options=list(model_options.keys()),
+        format_func=lambda x: model_options[x]
+    )
+    st.session_state["model"] = model
+
+    # Slider สำหรับปรับ temperature
+    temperature = st.slider("Set Temperature:", min_value=0.0, max_value=2.0, value=1.0, step=0.1)
+    st.session_state["temperature"] = temperature
+
+# Sidebar สำหรับจัดการประวัติการสนทนา
 st.sidebar.title("Chat History")
 
 # ปุ่มเริ่มต้นเซสชันใหม่
@@ -42,24 +63,8 @@ if st.session_state.chat_sessions:
 # ส่วนหลักของแอปพลิเคชัน
 st.title("Chat Application")
 
-model_options = {
-    "gpt-4o-mini": "GPT-4o Mini",
-    "llama-3.1-405b": "Llama 3.1 405B",
-    "llama-3.2-3b": "Llama 3.2 3B",
-    "Gemini Pro 1.5": "Gemini Pro 1.5",
-}
-
-model = st.radio(
-    "Choose your AI Model:",
-    options=list(model_options.keys()),
-    format_func=lambda x: model_options[x],
-    index=0,
-    horizontal=True,
-)
-st.session_state["model"] = model
-
 # รับข้อความจากผู้ใช้
-user_input = st.chat_input("Type your message here...")  # กล่องข้อความสำหรับผู้ใช้
+user_input = st.chat_input("Type your message here...")
 
 if user_input:
     # หากยังไม่มีเซสชัน เริ่มเซสชันใหม่
@@ -69,9 +74,9 @@ if user_input:
 
     # เพิ่มข้อความใหม่ในเซสชันปัจจุบัน
     add_to_current_session("user", user_input)
-    
+
     # ตอบกลับข้อความ (ตัวอย่างคำตอบ)
-    response = f"I received your message: {user_input}"
+    response = f"I received your message: {user_input} \nUsing model: {model_options[model]} with temperature: {temperature}"
     add_to_current_session("assistant", response)
 
 # แสดงประวัติการสนทนาในหน้าหลัก
