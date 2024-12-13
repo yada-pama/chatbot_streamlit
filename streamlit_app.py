@@ -37,6 +37,9 @@ with st.sidebar.expander("⚙️ Settings", expanded=True):
     )
     st.session_state["model"] = model
 
+    api_key = st.text_input("API Key", type="password")
+    st.session_state["api_key"] = api_key
+
     # Slider สำหรับปรับ temperature
     temperature = st.slider("Set Temperature:", min_value=0.0, max_value=2.0, value=1.0, step=0.1)
     st.session_state["temperature"] = temperature
@@ -60,8 +63,10 @@ if st.session_state.chat_sessions:
         if st.sidebar.button(title, key=f"session_{idx}"):
             st.session_state.current_session = idx
 
+
 # ส่วนหลักของแอปพลิเคชัน
 st.title("Chat Application")
+st.file_uploader('File uploader')
 
 # รับข้อความจากผู้ใช้
 user_input = st.chat_input("Type your message here...")
