@@ -3,6 +3,9 @@ from datetime import datetime
 import os
 import hashlib  # สำหรับ hash password
 import json  # สำหรับจัดเก็บข้อมูลผู้ใช้ในรูปแบบ JSON
+import time
+from H_supervisor import TyphoonAgent
+from dotenv import load_dotenv
 
 # กำหนด path สำหรับเก็บไฟล์และข้อมูลผู้ใช้
 BASE_FOLDER = "user_data"
@@ -188,6 +191,17 @@ if uploaded_files:
         for file_path in st.session_state.uploaded_files[st.session_state.current_session]:
             file_name = os.path.basename(file_path)
             st.sidebar.write(f"- {file_name}")
+
+# เอา uploaded_files เก็บเป็น path เข้า llm
+uploaded_file_paths = {}
+if uploaded_files:
+    st.sidebar.markdown("### 📂 File Upload")
+    for file in uploaded_files:
+        st.sidebar.write(f"- {file.name}")
+        # สร้างพาธชั่วคราวสำหรับไฟล์ที่อัปโหลด
+        with open(f"./{file.name}", "wb") as f:
+            f.write(file.getbuffer())
+        uploaded_file_paths[file.name] = f"./{file.name}"
 
 # Sidebar สำหรับจัดการประวัติการสนทนา
 st.sidebar.title("Chat History")
