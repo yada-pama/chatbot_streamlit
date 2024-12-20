@@ -186,12 +186,6 @@ if uploaded_files:
             file_path = save_uploaded_file(st.session_state.username, uploaded_file)
             st.session_state.uploaded_files[st.session_state.current_session].append(file_path)
 
-        # แสดงไฟล์ที่อัปโหลดใน Sidebar
-        st.sidebar.markdown("#### Uploaded Files:")
-        for file_path in st.session_state.uploaded_files[st.session_state.current_session]:
-            file_name = os.path.basename(file_path)
-            st.sidebar.write(f"- {file_name}")
-
 # เอา uploaded_files เก็บเป็น path เข้า llm
 uploaded_file_paths = {}
 if uploaded_files:
