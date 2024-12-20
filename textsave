@@ -1,0 +1,202 @@
+import streamlit as st
+from datetime import datetime
+import os
+import hashlib  # สำหรับ hash password
+
+# กำหนด path สำหรับเก็บไฟล์และข้อมูลผู้ใช้
+UPLOAD_FOLDER = "uploads"
+USER_DATA_FILE = "users.txt"  # ไฟล์เก็บข้อมูลผู้ใช้
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# ตรวจสอบว่ามีไฟล์ users.txt หรือยัง ถ้าไม่มีให้สร้าง
+if not os.path.exists(USER_DATA_FILE):
+    with open(USER_DATA_FILE, "w") as f:
+        pass  # สร้างไฟล์เปล่า
+
+# ตั้งค่า session_state
+if "chat_sessions" not in st.session_state:
+    st.session_state.chat_sessions = []
+if "current_session" not in st.session_state:
+    st.session_state.current_session = None
+if "username" not in st.session_state:
+    st.session_state.username = None
+if "uploaded_files" not in st.session_state:
+    st.session_state.uploaded_files = {}
+
+# ฟังก์ชันต่างๆ (เหมือนเดิม)
+def start_new_session():
+    if st.session_state.current_session is not None:
+        st.session_state.uploaded_files[st.session_state.current_session] = uploaded_files
+    st.session_state.current_session = None
+    st.session_state.uploaded_files = {}
+
+def add_to_current_session(role, content):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if st.session_state.current_session is not None:
+        st.session_state.chat_sessions[st.session_state.current_session]["history"].append(
+            {"role": role, "content": content, "timestamp": timestamp}
+        )
+
+# ฟังก์ชัน hash password
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+# ฟังก์ชัน register
+def register():
+    new_username = st.text_input("New Username")
+    new_password = st.text_input("New Password", type="password")
+    confirm_password = st.text_input("Confirm Password", type="password")
+    if st.button("Register"):
+        if new_password != confirm_password:
+            st.error("Passwords do not match.")
+        elif not new_username:
+            st.error("Please Input Username.")
+        else:
+            hashed_password = hash_password(new_password)
+            try:
+                with open(USER_DATA_FILE, "r") as f:
+                    for line in f:
+                        user, _ = line.strip().split(",")
+                        if user == new_username:
+                            st.error("Username already exists.")
+                            return
+                with open(USER_DATA_FILE, "a") as f:
+                    f.write(f"{new_username},{hashed_password}\n")
+                st.success("Registration successful! Please login.")
+            except Exception as e:
+                st.error(f"An error occurred during registration: {e}")
+
+# ฟังก์ชัน login (ปรับปรุง)
+def login():
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        hashed_password = hash_password(password)
+        try:
+            with open(USER_DATA_FILE, "r") as f:
+                for line in f:
+                    user, stored_hash = line.strip().split(",")
+                    if user == username and stored_hash == hashed_password:
+                        st.session_state.username = username
+                        st.success("Login successful!")
+                        return
+            st.error("Invalid username or password.")
+        except FileNotFoundError:
+            st.error("No user data found. Please register.")
+        except Exception as e:
+            st.error(f"An error occurred during login: {e}")
+
+# ส่วนของ app
+if not st.session_state.username:
+    auth_choice = st.radio("Login or Register", ("Login", "Register"))
+    if auth_choice == "Login":
+        login()
+    else:
+        register()
+    st.stop()
+# ส่วนของ app หลังจาก login
+st.sidebar.write(f"Logged in as: {st.session_state.username}")
+if st.sidebar.button("Logout"):
+    st.session_state.username = None
+    st.experimental_rerun()
+
+# Sidebar สำหรับการตั้งค่า
+with st.sidebar.expander("⚙️ Settings", expanded=True):
+    model_options = {
+        "gpt-4o-mini": "GPT-4o Mini",
+        "llama-3.1-405b": "Llama 3.1 405B",
+        "llama-3.2-3b": "Llama 3.2 3B",
+        "Gemini Pro 1.5": "Gemini Pro 1.5",
+    }
+    model = st.selectbox("Choose your AI Model:", options=list(model_options.keys()))
+    temperature = st.slider("Set Temperature:", min_value=0.0, max_value=2.0, value=1.0)
+
+    api_key = st.text_input("API Key", type="password")
+    st.session_state["api_key"] = api_key
+
+# ส่วนสำหรับอัปโหลดไฟล์ใน Sidebar (ปรับปรุงการจัดการไฟล์)
+st.sidebar.markdown("###  File Upload")
+uploaded_files = st.sidebar.file_uploader("Choose files", accept_multiple_files=True)
+
+if uploaded_files:
+    if st.session_state.current_session is not None:
+        if st.session_state.current_session not in st.session_state.uploaded_files:
+            st.session_state.uploaded_files[st.session_state.current_session] = []
+
+        for uploaded_file in uploaded_files:
+            file_path = os.path.join(UPLOAD_FOLDER, uploaded_file.name)
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.session_state.uploaded_files[st.session_state.current_session].append(uploaded_file.name)
+        st.sidebar.markdown("#### Uploaded Files:")
+        for file in st.session_state.uploaded_files[st.session_state.current_session]:
+            st.sidebar.write(f"- {file}")
+
+# Sidebar สำหรับจัดการประวัติการสนทนา
+st.sidebar.title("Chat History")
+
+# ปุ่มเริ่มต้นเซสชันใหม่
+if st.sidebar.button("Start New Chat"):
+    if st.session_state.current_session is not None:
+        # บันทึกเซสชันเก่าด้วย title จากข้อความแรก
+        if len(st.session_state.chat_sessions[st.session_state.current_session]["history"]) > 0:
+            first_message = st.session_state.chat_sessions[st.session_state.current_session]["history"][0]["content"]
+            st.session_state.chat_sessions[st.session_state.current_session]["title"] = first_message
+    start_new_session()
+
+# แสดงรายการเซสชันใน Sidebar โดยแชทใหม่อยู่ข้างบน
+if st.session_state.chat_sessions:
+    for idx, session in reversed(list(enumerate(st.session_state.chat_sessions))):
+        title = session.get("title", f"Session {idx + 1}")
+        if st.sidebar.button(title, key=f"session_{idx}"):
+            st.session_state.current_session = idx
+  
+
+st.title("Chat Application")
+
+# แบ่ง layout เป็นสองคอลัมน์
+col1, col2 = st.columns([3, 1])  # ปรับสัดส่วนคอลัมน์ได้ตามต้องการ
+
+# คอลัมน์สำหรับแสดงการสนทนา
+with col1:
+    chat_container = st.container()
+    user_input = st.chat_input("Type your message here...")
+
+    if user_input:
+        if st.session_state.current_session is None:
+            st.session_state.chat_sessions.append({"title": "", "history": []})
+            st.session_state.current_session = len(st.session_state.chat_sessions) - 1
+
+        add_to_current_session("user", user_input)
+        response = f"I received your message: {user_input}"  # แทนที่ด้วยการเรียก API จริง
+        add_to_current_session("assistant", response)
+
+    with chat_container:
+        if st.session_state.current_session is not None:
+            session = st.session_state.chat_sessions[st.session_state.current_session]
+            st.subheader(f"Session: {session.get('title', 'New Chat')}")
+            for chat in session["history"]:
+                message_alignment = "flex-end" if chat["role"] == "user" else "flex-start"
+                message_background = "#e1f5fe" if chat["role"] == "user" else "#f0f0f0"
+                st.markdown(
+                    f"""
+                    <div style="display: flex; justify-content: {message_alignment}; margin-bottom: 10px;">
+                        <div style="background-color: {message_background}; padding: 10px; border-radius: 8px; max-width: 80%; word-wrap: break-word;">
+                            {chat['content']}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+# คอลัมน์สำหรับ Log
+with col2:
+    with st.expander(" Chat Log", expanded=True): # กำหนดให้ expand เริ่มต้น
+        if st.session_state.chat_sessions:
+            for idx, session in reversed(list(enumerate(st.session_state.chat_sessions))):
+                title = session.get("title", f"Session {idx + 1}")
+                st.markdown(f"**{title}**")
+                for chat in session["history"]:
+                    st.write(f"{chat['timestamp']} | {chat['role'].capitalize()}: {chat['content']}")
+        else:
+            st.write("No chat logs available.")
