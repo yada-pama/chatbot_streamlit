@@ -2,11 +2,13 @@ import streamlit as st
 from datetime import datetime
 import os
 import hashlib  # สำหรับ hash password
+import json  # สำหรับจัดเก็บข้อมูลผู้ใช้ในรูปแบบ JSON
 
 # กำหนด path สำหรับเก็บไฟล์และข้อมูลผู้ใช้
+BASE_FOLDER = "user_data"
 UPLOAD_FOLDER = "uploads"
 USER_DATA_FILE = "users.txt"  # ไฟล์เก็บข้อมูลผู้ใช้
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(BASE_FOLDER, exist_ok=True)
 
 # ตรวจสอบว่ามีไฟล์ users.txt หรือยัง ถ้าไม่มีให้สร้าง
 if not os.path.exists(USER_DATA_FILE):
@@ -23,12 +25,40 @@ if "username" not in st.session_state:
 if "uploaded_files" not in st.session_state:
     st.session_state.uploaded_files = {}
 
-# ฟังก์ชันต่างๆ (เหมือนเดิม)
-def start_new_session():
+# ฟังก์ชันสำหรับจัดการข้อมูลผู้ใช้
+def get_user_folder(username):
+    return os.path.join(BASE_FOLDER, username)
+
+def save_user_data(username, data):
+    user_folder = get_user_folder(username)
+    os.makedirs(user_folder, exist_ok=True)
+    with open(os.path.join(user_folder, "data.json"), "w") as f:
+        json.dump(data, f)
+
+def load_user_data(username):
+    user_folder = get_user_folder(username)
+    data_file = os.path.join(user_folder, "data.json")
+    if os.path.exists(data_file):
+        with open(data_file, "r") as f:
+            return json.load(f)
+    return {"chat_sessions": [], "uploaded_files": {}}
+
+def save_current_session():
     if st.session_state.current_session is not None:
-        st.session_state.uploaded_files[st.session_state.current_session] = uploaded_files
+        user_data = load_user_data(st.session_state.username)
+        user_data["chat_sessions"] = st.session_state.chat_sessions
+        user_data["uploaded_files"] = st.session_state.uploaded_files
+        save_user_data(st.session_state.username, user_data)
+
+def load_user_sessions():
+    user_data = load_user_data(st.session_state.username)
+    st.session_state.chat_sessions = user_data.get("chat_sessions", [])
+    st.session_state.uploaded_files = user_data.get("uploaded_files", {})
+
+# ฟังก์ชันสำหรับจัดการการสนทนา
+def start_new_session():
+    save_current_session()
     st.session_state.current_session = None
-    st.session_state.uploaded_files = {}
 
 def add_to_current_session(role, content):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -62,11 +92,13 @@ def register():
                             return
                 with open(USER_DATA_FILE, "a") as f:
                     f.write(f"{new_username},{hashed_password}\n")
+                user_folder = get_user_folder(new_username)
+                os.makedirs(user_folder, exist_ok=True)
                 st.success("Registration successful! Please login.")
             except Exception as e:
                 st.error(f"An error occurred during registration: {e}")
 
-# ฟังก์ชัน login (ปรับปรุง)
+# ฟังก์ชัน login
 def login():
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
@@ -78,6 +110,7 @@ def login():
                     user, stored_hash = line.strip().split(",")
                     if user == username and stored_hash == hashed_password:
                         st.session_state.username = username
+                        load_user_sessions()
                         st.success("Login successful!")
                         return
             st.error("Invalid username or password.")
@@ -94,9 +127,11 @@ if not st.session_state.username:
     else:
         register()
     st.stop()
+
 # ส่วนของ app หลังจาก login
 st.sidebar.write(f"Logged in as: {st.session_state.username}")
 if st.sidebar.button("Logout"):
+    save_current_session()
     st.session_state.username = None
     st.experimental_rerun()
 
@@ -110,27 +145,49 @@ with st.sidebar.expander("⚙️ Settings", expanded=True):
     }
     model = st.selectbox("Choose your AI Model:", options=list(model_options.keys()))
     temperature = st.slider("Set Temperature:", min_value=0.0, max_value=2.0, value=1.0)
-
     api_key = st.text_input("API Key", type="password")
     st.session_state["api_key"] = api_key
 
-# ส่วนสำหรับอัปโหลดไฟล์ใน Sidebar (ปรับปรุงการจัดการไฟล์)
-st.sidebar.markdown("###  File Upload")
+# ส่วนสำหรับอัปโหลดไฟล์ใน Sidebar
+st.sidebar.markdown("### File Upload")
 uploaded_files = st.sidebar.file_uploader("Choose files", accept_multiple_files=True)
 
+# ฟังก์ชันสำหรับบันทึกไฟล์
+def save_uploaded_file(username, uploaded_file):
+    user_folder = get_user_folder(username)
+    upload_folder = os.path.join(user_folder, "uploads")
+    os.makedirs(upload_folder, exist_ok=True)
+    
+    file_path = os.path.join(upload_folder, uploaded_file.name)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return file_path
+
+# ฟังก์ชันโหลดไฟล์ที่เกี่ยวข้องกับผู้ใช้เมื่อเริ่มต้นเซสชัน
+def load_user_files(username):
+    user_folder = get_user_folder(username)
+    upload_folder = os.path.join(user_folder, "uploads")
+    os.makedirs(upload_folder, exist_ok=True)  # สร้างโฟลเดอร์ถ้ายังไม่มี
+    return [
+        os.path.join(upload_folder, file_name) for file_name in os.listdir(upload_folder)
+    ]
+
+# ส่วนจัดการไฟล์ใน Sidebar
 if uploaded_files:
     if st.session_state.current_session is not None:
         if st.session_state.current_session not in st.session_state.uploaded_files:
             st.session_state.uploaded_files[st.session_state.current_session] = []
 
         for uploaded_file in uploaded_files:
-            file_path = os.path.join(UPLOAD_FOLDER, uploaded_file.name)
-            with open(file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            st.session_state.uploaded_files[st.session_state.current_session].append(uploaded_file.name)
+            # บันทึกไฟล์ในโฟลเดอร์ของผู้ใช้
+            file_path = save_uploaded_file(st.session_state.username, uploaded_file)
+            st.session_state.uploaded_files[st.session_state.current_session].append(file_path)
+
+        # แสดงไฟล์ที่อัปโหลดใน Sidebar
         st.sidebar.markdown("#### Uploaded Files:")
-        for file in st.session_state.uploaded_files[st.session_state.current_session]:
-            st.sidebar.write(f"- {file}")
+        for file_path in st.session_state.uploaded_files[st.session_state.current_session]:
+            file_name = os.path.basename(file_path)
+            st.sidebar.write(f"- {file_name}")
 
 # Sidebar สำหรับจัดการประวัติการสนทนา
 st.sidebar.title("Chat History")
@@ -138,24 +195,20 @@ st.sidebar.title("Chat History")
 # ปุ่มเริ่มต้นเซสชันใหม่
 if st.sidebar.button("Start New Chat"):
     if st.session_state.current_session is not None:
-        # บันทึกเซสชันเก่าด้วย title จากข้อความแรก
         if len(st.session_state.chat_sessions[st.session_state.current_session]["history"]) > 0:
             first_message = st.session_state.chat_sessions[st.session_state.current_session]["history"][0]["content"]
             st.session_state.chat_sessions[st.session_state.current_session]["title"] = first_message
     start_new_session()
 
-# แสดงรายการเซสชันใน Sidebar โดยแชทใหม่อยู่ข้างบน
+# แสดงรายการเซสชันใน Sidebar
 if st.session_state.chat_sessions:
     for idx, session in reversed(list(enumerate(st.session_state.chat_sessions))):
         title = session.get("title", f"Session {idx + 1}")
         if st.sidebar.button(title, key=f"session_{idx}"):
             st.session_state.current_session = idx
-  
-
-st.title("Chat Application")
 
 # แบ่ง layout เป็นสองคอลัมน์
-col1, col2 = st.columns([3, 1])  # ปรับสัดส่วนคอลัมน์ได้ตามต้องการ
+col1, col2 = st.columns([3, 1])
 
 # คอลัมน์สำหรับแสดงการสนทนา
 with col1:
@@ -168,8 +221,10 @@ with col1:
             st.session_state.current_session = len(st.session_state.chat_sessions) - 1
 
         add_to_current_session("user", user_input)
-        response = f"I received your message: {user_input}"  # แทนที่ด้วยการเรียก API จริง
+        response = f"I received your message: {user_input}"
         add_to_current_session("assistant", response)
+
+        save_current_session()
 
     with chat_container:
         if st.session_state.current_session is not None:
@@ -191,7 +246,7 @@ with col1:
 
 # คอลัมน์สำหรับ Log
 with col2:
-    with st.expander(" Chat Log", expanded=True): # กำหนดให้ expand เริ่มต้น
+    with st.expander("Chat Log", expanded=True):
         if st.session_state.chat_sessions:
             for idx, session in reversed(list(enumerate(st.session_state.chat_sessions))):
                 title = session.get("title", f"Session {idx + 1}")
